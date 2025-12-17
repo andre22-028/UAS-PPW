@@ -1,0 +1,8 @@
+streamlit
+pandas
+networkx
+matplotlib
+seaborn
+numpy
+nltk
+pymupdf
