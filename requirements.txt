@@ -6,3 +6,5 @@ seaborn
 numpy
 nltk
 pymupdf
+scipy
+scikit-learn
