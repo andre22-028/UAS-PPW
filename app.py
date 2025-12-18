@@ -19,7 +19,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 Dashboard Analisis Text Graph")
+st.title("📊 Dashboard KEYWORD EXTRACTION")
 
 # ===============================
 # DOWNLOAD RESOURCE NLTK
