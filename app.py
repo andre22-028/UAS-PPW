@@ -15,15 +15,13 @@ from collections import Counter
 # 1. KONFIGURASI HALAMAN
 # ===============================
 st.set_page_config(
-    page_title="Keyword Extraction - Graph Based",
+    page_title="Keyword Extraction - Dashboard UAS",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("🔍 Keyword Extraction Berbasis Graph & Centrality")
-st.markdown("""
-Aplikasi ini mengekstraksi kata kunci (**Unigram & Bigram**) menggunakan algoritma **PageRank** dan **Degree Centrality** berdasarkan struktur graf kata (Co-occurrence).
-""")
+st.title("📊 Keyword Extraction Berbasis Graph & Centrality")
+st.markdown("Dashboard ini mengekstraksi kata kunci penting menggunakan perpaduan **Unigram**, **Bigram**, dan algoritma **PageRank**.")
 
 # ===============================
 # 2. DOWNLOAD RESOURCE NLTK
@@ -43,136 +41,154 @@ download_nltk_data()
 # 3. FUNGSI PREPROCESSING TEKS
 # ===============================
 def preprocess_text(text):
-    # Bersihkan simbol khusus
-    text = text.replace('◼', '')
-    text = re.sub(r'[^\x00-\x7f]', r'', text)
+    # Simpan versi asli (sedikit dibersihkan dari simbol aneh saja)
+    original_sample = text.replace('◼', '')
     
-    # Normalisasi
-    text = text.lower()
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    text = re.sub(r'\d+', '', text)
+    # 1. Cleaning & Normalisasi
+    clean = original_sample.lower()
+    clean = re.sub(r'[^\x00-\x7f]', r'', clean) # Hapus karakter non-ASCII
+    clean = clean.translate(str.maketrans('', '', string.punctuation))
+    clean = re.sub(r'\d+', '', clean)
     
-    tokens = nltk.word_tokenize(text)
+    # 2. Tokenisasi
+    tokens = nltk.word_tokenize(clean)
+    
+    # 3. Stopword Removal
     stop_words = set(stopwords.words('indonesian'))
     
-    # 1. Ekstraksi Unigram
+    # Ekstraksi Unigram
     unigrams = [t for t in tokens if t not in stop_words and len(t) > 2]
     
-    # 2. Ekstraksi Bigram
-    bi_grams_gen = list(ngrams(tokens, 2))
+    # Ekstraksi Bigram (Pastikan kedua kata bukan stopword)
+    bi_gen = list(ngrams(tokens, 2))
     bigrams = [
-        f"{b[0]} {b[1]}" for b in bi_grams_gen 
+        f"{b[0]} {b[1]}" for b in bi_gen 
         if b[0] not in stop_words and b[1] not in stop_words 
         and len(b[0]) > 2 and len(b[1]) > 2
     ]
     
-    return unigrams, bigrams
+    # Gabungkan unigram menjadi "Kalimat Bersih" untuk demo
+    cleaned_sentence = " ".join(unigrams)
+    
+    return unigrams, bigrams, cleaned_sentence, original_sample
 
 # ===============================
-# 4. SIDEBAR - INPUT FILE
+# 4. SIDEBAR & FILE UPLOAD
 # ===============================
 with st.sidebar:
-    st.header("Upload Dokumen")
-    uploaded_file = st.file_uploader("Pilih PDF atau TXT", type=["pdf", "txt"])
+    st.header("Konfigurasi")
+    uploaded_file = st.file_uploader("Upload PDF atau TXT", type=["pdf", "txt"])
     st.divider()
-    st.info("Aplikasi akan membangun graph berdasarkan hubungan antar kata (Unigram + Bigram).")
+    window_size = st.slider("Graph Window Size", 1, 5, 2)
+    st.info("Window size menentukan seberapa jauh jarak antar kata untuk dianggap berhubungan.")
 
 # ===============================
 # 5. MAIN LOGIC
 # ===============================
 if uploaded_file is not None:
-    # Proses Ekstraksi Teks
+    # Ekstraksi Teks dari File
     if uploaded_file.type == "application/pdf":
         with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
             raw_text = "".join([page.get_text() for page in doc])
     else:
         raw_text = uploaded_file.read().decode("utf-8")
 
-    if raw_text.strip() == "":
-        st.error("Dokumen kosong.")
+    if not raw_text.strip():
+        st.error("Dokumen tidak memiliki teks.")
     else:
-        # Preprocessing
-        unigrams, bigrams = preprocess_text(raw_text)
-        combined_keywords = unigrams + bigrams # Digabung untuk Graph
+        # Jalankan Preprocessing
+        unigrams, bigrams, cleaned_text, original_text = preprocess_text(raw_text)
+        combined_all = unigrams + bigrams
         
-        tab_stats, tab_matrix, tab_graph, tab_result = st.tabs([
-            "📊 Statistik", 
-            "🔢 Matriks Co-occurrence",
-            "🕸️ Visualisasi Graph", 
-            "🏆 Top 20 Keywords"
+        # Inisialisasi Tab
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📄 Hasil Preprocessing", 
+            "🔢 Matriks Ko-okurensi", 
+            "🕸️ Network Graph", 
+            "🏆 Skor PageRank (Top 20)"
         ])
 
-        # --- TAB 1: STATISTIK ---
-        with tab_stats:
-            st.subheader("Frekuensi Kata & Frase")
+        # --- TAB 1: PREPROCESSING & STATISTIK ---
+        with tab1:
+            st.subheader("Perbandingan Teks")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown("**Teks Asli (Fragmen):**")
+                st.text_area("Original", original_text[:1000] + "...", height=200, label_visibility="collapsed")
+            with col_b:
+                st.markdown("**Teks Hasil Preprocessing (Kalimat Bersih):**")
+                st.text_area("Cleaned", cleaned_text[:1000] + "...", height=200, label_visibility="collapsed")
+            
+            st.divider()
+            st.subheader("Statistik Frekuensi")
             c1, c2 = st.columns(2)
             with c1:
                 st.write("**Top 15 Unigrams**")
-                df_u = pd.DataFrame(Counter(unigrams).most_common(15), columns=["Kata", "Freq"])
-                st.bar_chart(data=df_u, x="Kata", y="Freq")
+                u_df = pd.DataFrame(Counter(unigrams).most_common(15), columns=["Kata", "Freq"])
+                st.bar_chart(u_df.set_index("Kata"))
             with c2:
                 st.write("**Top 15 Bigrams**")
-                df_b = pd.DataFrame(Counter(bigrams).most_common(15), columns=["Frase", "Freq"])
-                st.bar_chart(data=df_b, x="Frase", y="Freq", color="#ffaa00")
+                b_df = pd.DataFrame(Counter(bigrams).most_common(15), columns=["Frase", "Freq"])
+                st.bar_chart(b_df.set_index("Frase"), color="#ffaa00")
 
-        # --- TAB 2: MATRIKS CO-OCCURRENCE ---
-        with tab_matrix:
-            st.subheader("Matriks Ko-okurensi (Top 15 Keywords)")
-            top_15_all = [item for item, count in Counter(combined_keywords).most_common(15)]
+        # --- TAB 2: MATRIKS KO-OKURENSI ---
+        with tab2:
+            st.subheader("Matriks Hubungan (Top 15 Keywords)")
+            top_15 = [item for item, count in Counter(combined_all).most_common(15)]
             
-            # Membangun Matriks
-            matrix = pd.DataFrame(0, index=top_15_all, columns=top_15_all)
-            window = 2
-            for i in range(len(combined_keywords) - 1):
-                for j in range(i + 1, min(i + window + 1, len(combined_keywords))):
-                    w1, w2 = combined_keywords[i], combined_keywords[j]
-                    if w1 in top_15_all and w2 in top_15_all:
-                        matrix.loc[w1, w2] += 1
-                        matrix.loc[w2, w1] += 1
+            # Buat DataFrame Matriks
+            matrix_df = pd.DataFrame(0, index=top_15, columns=top_15)
+            for i in range(len(combined_all) - 1):
+                for j in range(i + 1, min(i + window_size + 1, len(combined_all))):
+                    w1, w2 = combined_all[i], combined_all[j]
+                    if w1 in top_15 and w2 in top_15:
+                        matrix_df.loc[w1, w2] += 1
+                        matrix_df.loc[w2, w1] += 1
 
             fig_m, ax_m = plt.subplots(figsize=(10, 8))
-            sns.heatmap(matrix, annot=True, cmap="YlGnBu", ax=ax_m)
+            sns.heatmap(matrix_df, annot=True, cmap="YlGnBu", fmt="d", ax=ax_m)
             st.pyplot(fig_m)
-            st.dataframe(matrix)
+            st.dataframe(matrix_df, use_container_width=True)
 
-        # --- TAB 3: GRAPH ---
-        with tab_graph:
-            st.subheader("Network Graph")
+        # --- TAB 3: NETWORK GRAPH ---
+        with tab3:
+            st.subheader("Representasi Graph Kata")
             G = nx.Graph()
-            for i in range(len(combined_keywords) - 1):
-                w1, w2 = combined_keywords[i], combined_keywords[i+1]
-                if G.has_edge(w1, w2):
-                    G[w1][w2]['weight'] += 1
-                else:
-                    G.add_edge(w1, w2, weight=1)
+            # Membangun edges
+            for i in range(len(combined_all) - 1):
+                for j in range(i + 1, min(i + window_size + 1, len(combined_all))):
+                    G.add_edge(combined_all[i], combined_all[j])
 
-            num_nodes = st.slider("Tampilkan jumlah node", 10, 50, 20)
-            top_nodes = [n for n, c in Counter(combined_keywords).most_common(num_nodes)]
+            num_nodes = st.slider("Jumlah node di graph", 10, 50, 20)
+            top_nodes = [n for n, c in Counter(combined_all).most_common(num_nodes)]
             sub = G.subgraph(top_nodes)
-            
-            fig_g, ax_g = plt.subplots(figsize=(12, 8))
-            pos = nx.spring_layout(sub, k=1)
+
+            fig_g, ax_g = plt.subplots(figsize=(12, 7))
+            pos = nx.kamada_kawai_layout(sub)
             nx.draw(sub, pos, with_labels=True, node_color="#00b4d8", 
-                    node_size=1500, font_size=9, edge_color="#cccccc", ax=ax_g)
+                    node_size=2000, font_size=10, edge_color="#dddddd", width=1.5, ax=ax_g)
             st.pyplot(fig_g)
 
-        # --- TAB 4: HASIL AKHIR ---
-        with tab_result:
-            st.subheader("Top 20 Keywords (PageRank & Degree)")
-            pr = nx.pagerank(G, weight='weight')
-            dc = nx.degree_centrality(G)
+        # --- TAB 4: CENTRALITY RESULTS ---
+        with tab4:
+            st.subheader("Hasil Ekstraksi Kata Kunci Utama")
+            # PageRank
+            pr_scores = nx.pagerank(G)
+            # Degree Centrality (Tambahan minimal 1 sesuai instruksi)
+            dc_scores = nx.degree_centrality(G)
             
-            df_res = pd.DataFrame({
-                "Keyword": list(pr.keys()),
-                "PageRank": list(pr.values()),
-                "Degree Centrality": [dc[k] for k in pr.keys()]
-            }).sort_values(by="PageRank", ascending=False).head(20)
+            final_df = pd.DataFrame({
+                "Keyword": list(pr_scores.keys()),
+                "PageRank Score": list(pr_scores.values()),
+                "Degree Score": [dc_scores[k] for k in pr_scores.keys()]
+            }).sort_values(by="PageRank Score", ascending=False).head(20)
             
-            df_res.index = range(1, 21)
-            st.table(df_res)
+            final_df.index = range(1, 21)
+            st.table(final_df)
             
-            csv = df_res.to_csv(index=False).encode('utf-8')
-            st.download_button("Download CSV", csv, "keywords.csv", "text/csv")
+            # Download Button
+            csv = final_df.to_csv(index=False).encode('utf-8')
+            st.download_button("Download CSV", csv, "keyword_results.csv", "text/csv")
 
 else:
-    st.info("Silakan unggah file dokumen untuk memulai analisis.")
+    st.info("Silakan unggah dokumen PDF atau TXT untuk memulai ekstraksi.")
